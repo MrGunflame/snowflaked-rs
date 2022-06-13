@@ -39,12 +39,16 @@
 //!
 //! # Example
 //! ```
+//! use snowflaked::Generator;
+//!
 //! let mut generator = Generator::new(0);
 //! let id: u64 = generator.generate();
 //! ```
 //!
 //! [`Generator::generate`] can also generate custom snowflake ids:
-//! ```
+//! ```ignore
+//! use snowflaked::Generator;
+//!
 //! let mut generator = Generator::new(0);
 //! let id: UserId = generator.generate();
 //! ```
