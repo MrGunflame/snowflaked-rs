@@ -11,3 +11,6 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 sync = []
+
+[package.metadata.docs.rs]
+all-features = true
