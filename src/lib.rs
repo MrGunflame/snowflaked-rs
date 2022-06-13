@@ -1,3 +1,59 @@
+//! A crate for working with snowflake ids.
+//!
+//! Most notably this provides [`Snowflake`] for working with custom snowflake ids and
+//! [`Generator`] creating new snowflake ids.
+//!
+//! # Custom snowflake ids
+//!
+//! Custom snowflake ids can be created with the [`Snowflake`] trait.
+//!
+//! # Example
+//! ```
+//! use snowflaked::Snowflake;
+//!
+//! struct UserId(u64);
+//!
+//! impl Snowflake for UserId {
+//!     fn from_parts(timestamp: u64, instance: u64, sequence: u64) -> Self {
+//!         Self(u64::from_parts(timestamp, instance, sequence))
+//!     }
+//!
+//!     fn timestamp(&self) -> u64 {
+//!         self.0.timestamp()
+//!     }
+//!
+//!     fn instance(&self) -> u64 {
+//!         self.0.instance()
+//!     }
+//!
+//!     fn sequence(&self) -> u64 {
+//!         self.0.sequence()
+//!     }
+//! }
+//! ```
+//!
+//! # Generating snowflake ids
+//!
+//! [`Generator`] can be used to generate unique snowflake ids. Additionally [`sync::Generator`]
+//! can be used when working with multiple threads (requires the `sync` feature).
+//!
+//! # Example
+//! ```
+//! let mut generator = Generator::new(0);
+//! let id: u64 = generator.generate();
+//! ```
+//!
+//! [`Generator::generate`] can also generate custom snowflake ids:
+//! ```
+//! let mut generator = Generator::new(0);
+//! let id: UserId = generator.generate();
+//! ```
+//!
+//! For more details on [`sync::Generator`] see the [`sync`] module.
+//!
+//! # Feature flags
+//! `sync`: Enables the [`sync`] module.
+
 #[cfg(feature = "sync")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
 pub mod sync;

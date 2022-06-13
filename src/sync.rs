@@ -4,6 +4,17 @@
 //!
 //! This module provides [`Generator`] which can safely be shared between threads. Its constructor
 //! is also const allowing to use it in a `static` context.
+//!
+//! # Example
+//! ```
+//! use snowflaked::sync::Generator;
+//!
+//! static GENERATOR: Generator = Generator::new_unchecked(0);
+//!
+//! fn generate_id() -> u64 {
+//!     GENERATOR.generate()
+//! }
+//! ```
 
 use crate::{Snowflake, INSTANCE_MAX};
 
@@ -13,7 +24,7 @@ use std::time::UNIX_EPOCH;
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
 /// be used in a `static` context.
 ///
-/// # Examples
+/// # Example
 /// ```
 /// use snowflaked::sync::Generator;
 ///
