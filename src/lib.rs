@@ -232,13 +232,11 @@ mod tests {
 
         for (index, id) in ids.iter().enumerate() {
             for (index2, id2) in ids.iter().enumerate() {
-                if index != index2 {
-                    if id == id2 {
-                        panic!(
-                            "Found duplicate id {} at index {} and {}",
-                            id, index, index2
-                        );
-                    }
+                if index != index2 && id == id2 {
+                    panic!(
+                        "Found duplicate id {} at index {} and {}",
+                        id, index, index2
+                    );
                 }
             }
         }
