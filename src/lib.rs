@@ -46,7 +46,29 @@
 //! ```
 //!
 //! [`Generator::generate`] can also generate custom snowflake ids:
-//! ```ignore
+//! ```
+//! # use snowflaked::Snowflake;
+//! #
+//! # pub struct UserId(u64);
+//! #
+//! # impl Snowflake for UserId {
+//! #    fn from_parts(timestamp: u64, instance: u64, sequence: u64) -> Self {
+//! #       Self(u64::from_parts(timestamp, instance, sequence))
+//! #    }
+//! #
+//! #    fn timestamp(&self) -> u64 {
+//! #        self.0.timestamp()
+//! #    }
+//! #
+//! #    fn instance(&self) -> u64 {
+//! #        self.0.instance()
+//! #    }
+//! #
+//! #    fn sequence(&self) -> u64 {
+//! #        self.0.sequence()
+//! #    }
+//! # }
+//!
 //! use snowflaked::Generator;
 //!
 //! let mut generator = Generator::new(0);
