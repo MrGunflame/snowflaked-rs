@@ -1,5 +1,8 @@
 # Snowflaked
 
+[![Crates.io](https://img.shields.io/crates/v/snowflaked)](https://crates.io/crates/snowflaked)
+[![Docs.rs](https://img.shields.io/docsrs/snowflaked/latest)](https://docs.rs/snowflaked)
+
 A crate for creating and working with snowflake ids
 
 ## License
