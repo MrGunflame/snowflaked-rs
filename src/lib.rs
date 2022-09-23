@@ -152,7 +152,17 @@ impl Snowflake for i64 {
     }
 }
 
-/// A generator for unique snowflake ids.
+/// A generator for new unique [`Snowflake`] ids.
+///
+/// # Examples
+///
+/// ```
+/// # use snowflaked::Generator;
+/// #
+/// let mut generator = Generator::new(0);
+///
+/// let id: u64 = generator.generate();
+/// ```
 #[derive(Clone, Debug)]
 pub struct Generator {
     instance: u16,
@@ -166,12 +176,42 @@ impl Generator {
     /// # Panics
     ///
     /// Panics if `instance` exceeds the maximum value (2^10 - 1).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new(123);
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// ```
+    ///
+    /// Providing an invalid `instance` will panic.
+    ///
+    /// ```should_panic
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new(10_000);
+    /// ```
+    #[inline]
     pub fn new(instance: u16) -> Self {
         Self::new_checked(instance).expect("instance is too big for snowflake generator")
     }
 
     /// Creates a new `Generator` using the given `instance`. Returns `None` if the instance
     /// exceeds the maximum instance value (2^10 - 1).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new_checked(123).unwrap();
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// ```
+    #[inline]
     pub const fn new_checked(instance: u16) -> Option<Self> {
         if instance > INSTANCE_MAX {
             None
@@ -185,6 +225,17 @@ impl Generator {
     ///
     /// Note: If `instance` exceeds the maximum instance value the `Generator` will create
     /// incorrect snowflakes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new_unchecked(123);
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// ```
+    #[inline]
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
             instance,
@@ -193,7 +244,34 @@ impl Generator {
         }
     }
 
+    /// Returns the configured instace component of this `Generator`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new(123);
+    ///
+    /// assert_eq!(generator.instance());
+    /// ```
+    #[inline]
+    pub fn instance(&self) -> u16 {
+        self.instance
+    }
+
     /// Generate a new unique snowflake id.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// #
+    /// let mut generator = Generator::new(0);
+    ///
+    /// let id1: u64 = generator.generate();
+    /// let id2: i64 = generator.generate();
+    /// ```
     pub fn generate<T>(&mut self) -> T
     where
         T: Snowflake,
@@ -220,9 +298,8 @@ impl Generator {
 
 #[cfg(test)]
 mod tests {
-    use crate::Snowflake;
-
     use super::Generator;
+    use crate::Snowflake;
 
     #[test]
     fn test_generate() {
