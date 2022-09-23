@@ -81,18 +81,38 @@ impl Generator {
     where
         T: Snowflake,
     {
+        // Atomically acquire a new sequence.
         let mut sequence = self.sequence.load(Ordering::Acquire);
-        sequence = (sequence + 1) % 4096;
-        self.sequence.store(sequence, Ordering::Release);
+        loop {
+            let new_sequence = (sequence + 1) % 4096;
+            match self.sequence.compare_exchange_weak(
+                sequence,
+                new_sequence,
+                Ordering::Release,
+                Ordering::Relaxed,
+            ) {
+                Ok(seq) => {
+                    sequence = new_sequence;
+                    break;
+                }
+                Err(seq) => sequence = seq,
+            }
+        }
 
         let mut timestamp = self.timestamp.load(Ordering::Acquire);
         loop {
             let new_timestamp = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
 
             if sequence != 0 || new_timestamp > timestamp {
-                timestamp = new_timestamp;
-                self.timestamp.store(timestamp, Ordering::Release);
-                break;
+                match self.timestamp.compare_exchange_weak(
+                    timestamp,
+                    new_timestamp,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => break,
+                    Err(ts) => timestamp = ts,
+                }
             }
 
             std::hint::spin_loop();
@@ -118,6 +138,8 @@ impl Clone for Generator {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::Ordering;
+    use std::sync::mpsc;
+    use std::thread;
 
     use super::Generator;
     use crate::Snowflake;
@@ -137,6 +159,44 @@ mod tests {
             match sequence {
                 4095 => sequence = 0,
                 _ => sequence += 1,
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_threads() {
+        const INSTANCE: u64 = 0;
+
+        let threads: usize = num_cpus::get();
+
+        static GENERATOR: Generator = Generator::new_unchecked(INSTANCE as u16);
+
+        let (tx, rx) = mpsc::sync_channel::<Vec<u64>>(threads);
+
+        for _ in 0..threads {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let mut ids = Vec::with_capacity(10_000);
+
+                ids.push(GENERATOR.generate());
+
+                tx.send(ids).unwrap();
+            });
+        }
+
+        let mut ids = Vec::with_capacity(10_000 * threads);
+        for _ in 0..threads {
+            ids.extend(rx.recv().unwrap());
+        }
+
+        for (index, id) in ids.iter().enumerate() {
+            for (index2, id2) in ids.iter().enumerate() {
+                if index != index2 && id == id2 {
+                    panic!(
+                        "Found duplicate id {} at index {} and {}",
+                        id, index, index2
+                    );
+                }
             }
         }
     }

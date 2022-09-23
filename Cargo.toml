@@ -12,5 +12,8 @@ license = "MIT OR Apache-2.0"
 default = []
 sync = []
 
+[dev-dependencies]
+num_cpus = "1.13.1"
+
 [package.metadata.docs.rs]
 all-features = true
