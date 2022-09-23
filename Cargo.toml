@@ -17,3 +17,5 @@ num_cpus = "1.13.1"
 
 [package.metadata.docs.rs]
 all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+

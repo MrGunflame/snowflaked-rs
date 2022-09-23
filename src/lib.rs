@@ -253,7 +253,7 @@ impl Generator {
     /// #
     /// let mut generator = Generator::new(123);
     ///
-    /// assert_eq!(generator.instance());
+    /// assert_eq!(generator.instance(), 123);
     /// ```
     #[inline]
     pub fn instance(&self) -> u16 {

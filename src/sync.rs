@@ -1,7 +1,5 @@
 //! Thread-safe Snowflake Generator
 //!
-//! **Requires the `sync` feature to be enabled.**
-//!
 //! This module provides [`Generator`] which can safely be shared between threads. Its constructor
 //! is also const allowing to use it in a `static` context.
 //!
@@ -91,7 +89,7 @@ impl Generator {
                 Ordering::Release,
                 Ordering::Relaxed,
             ) {
-                Ok(seq) => {
+                Ok(_) => {
                     sequence = new_sequence;
                     break;
                 }
