@@ -279,12 +279,12 @@ mod tests {
 
     #[test]
     fn test_snowflake_i64() {
-        let id = 442252698964721669_u64;
+        let id = 442252698964721669_i64;
         assert_eq!(id.timestamp(), 105441260091);
         assert_eq!(id.instance(), 0);
         assert_eq!(id.sequence(), 5);
 
-        let id = 862026798833074178_u64;
+        let id = 862026798833074178_i64;
         assert_eq!(id.timestamp(), 205523204525);
         assert_eq!(id.instance(), 256);
         assert_eq!(id.sequence(), 2);
