@@ -79,6 +79,7 @@
 //!
 //! # Feature flags
 //! `sync`: Enables the [`sync`] module.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "sync")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
