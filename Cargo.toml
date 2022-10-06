@@ -15,3 +15,10 @@ sync = []
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "generator"
+
+[[bench]]
+name = "sync"
+required-features = ["sync"]
