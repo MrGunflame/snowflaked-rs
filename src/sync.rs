@@ -14,13 +14,20 @@
 //! }
 //! ```
 
-use crate::{Snowflake, INSTANCE_MAX};
+use crate::{Components, Snowflake, INSTANCE_MAX};
 
-use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::mem::MaybeUninit;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
 
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
 /// be used in a `static` context.
+///
+/// # Cloning
+///
+/// Cloning a `Generator` will create a second one with the same state as the original one. The
+/// internal state is copied and not shared. If you need to share a single `Generator` you need to
+/// manually wrap it in an [`Arc`] (or similar).
 ///
 /// # Example
 /// ```
@@ -34,11 +41,10 @@ use std::time::UNIX_EPOCH;
 /// ```
 ///
 /// [`generate`]: Self::generate
+/// [`Arc`]: std::sync::Arc
 #[derive(Debug)]
 pub struct Generator {
-    instance: u16,
-    sequence: AtomicU16,
-    timestamp: AtomicU64,
+    components: AtomicU64,
 }
 
 impl Generator {
@@ -47,12 +53,14 @@ impl Generator {
     /// # Panics
     ///
     /// Panics if `instance` exceeds the maximum value (2^10 - 1).
+    #[inline]
     pub fn new(instance: u16) -> Self {
         Self::new_checked(instance).expect("instance is too big for snowflake generator")
     }
 
     /// Creates a new `Generator` using the given `instance`. Returns `None` if the instance
     /// exceeds the maximum instance value (2^10 - 1).
+    #[inline]
     pub const fn new_checked(instance: u16) -> Option<Self> {
         if instance > INSTANCE_MAX {
             None
@@ -66,12 +74,28 @@ impl Generator {
     ///
     /// Note: If `instance` exceeds the maximum value the `Generator` will create incorrect
     /// snowflakes.
+    #[inline]
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
-            instance,
-            sequence: AtomicU16::new(instance),
-            timestamp: AtomicU64::new(0),
+            components: AtomicU64::new(Components::new(instance as u64).to_bits()),
         }
+    }
+
+    /// Returns the configured instance component of this `Generator`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::sync::Generator;
+    /// #
+    /// let mut generator = Generator::new(123);
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// ```
+    #[inline]
+    pub fn instance(&self) -> u16 {
+        let bits = self.components.load(Ordering::Relaxed);
+        Components::from_bits(bits).instance() as u16
     }
 
     /// Generate a new unique snowflake id.
@@ -79,56 +103,50 @@ impl Generator {
     where
         T: Snowflake,
     {
-        // Atomically acquire a new sequence.
-        let mut sequence = self.sequence.load(Ordering::Acquire);
-        loop {
-            let new_sequence = (sequence + 1) % 4096;
-            match self.sequence.compare_exchange_weak(
-                sequence,
-                new_sequence,
-                Ordering::Release,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => {
-                    sequence = new_sequence;
-                    break;
+        // Even thought we only assign this value once we need to assign this value to
+        // something before passing it (reference) into the closure.
+        // This value is safe to read after the closure completes.
+        let mut id = MaybeUninit::uninit();
+
+        let _ = self
+            .components
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bits| {
+                let mut components = Components::from_bits(bits);
+
+                let sequence = components.take_sequence();
+
+                let timestamp;
+                loop {
+                    let now = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+
+                    if sequence != 4095 || now > components.timestamp() {
+                        components.set_timestamp(now);
+                        timestamp = now;
+                        break;
+                    }
+
+                    std::hint::spin_loop();
                 }
-                Err(seq) => sequence = seq,
-            }
-        }
 
-        let mut timestamp = self.timestamp.load(Ordering::Acquire);
-        loop {
-            let new_timestamp = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+                let instance = components.instance();
 
-            if sequence != 0 || new_timestamp > timestamp {
-                match self.timestamp.compare_exchange_weak(
-                    timestamp,
-                    new_timestamp,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => break,
-                    Err(ts) => timestamp = ts,
-                }
-            }
+                id.write(T::from_parts(timestamp, instance, sequence));
 
-            std::hint::spin_loop();
-        }
+                Some(components.to_bits())
+            });
 
-        T::from_parts(timestamp, self.instance as u64, sequence as u64)
+        // SAFETY: The call to `fetch_update` only completes once the closure ran fully.
+        // At this point `id` has been initialized from within the closure.
+        unsafe { id.assume_init() }
     }
 }
 
 impl Clone for Generator {
     fn clone(&self) -> Self {
-        let sequence = self.sequence.load(Ordering::Relaxed);
-        let timestamp = self.timestamp.load(Ordering::Relaxed);
+        let bits = self.components.load(Ordering::Relaxed);
 
         Self {
-            instance: self.instance,
-            sequence: AtomicU16::new(sequence),
-            timestamp: AtomicU64::new(timestamp),
+            components: AtomicU64::new(bits),
         }
     }
 }
@@ -140,13 +158,13 @@ mod tests {
     use std::thread;
 
     use super::Generator;
-    use crate::Snowflake;
+    use crate::{Components, Snowflake};
 
     #[test]
     fn test_generate() {
         const INSTANCE: u64 = 0;
 
-        let mut sequence = 1;
+        let mut sequence = 0;
         let generator = Generator::new_unchecked(INSTANCE as u16);
 
         for _ in 0..10_000 {
@@ -164,26 +182,27 @@ mod tests {
     #[test]
     fn test_generate_threads() {
         const INSTANCE: u64 = 0;
-
-        let threads: usize = num_cpus::get();
+        const THREADS: usize = 4;
 
         static GENERATOR: Generator = Generator::new_unchecked(INSTANCE as u16);
 
-        let (tx, rx) = mpsc::sync_channel::<Vec<u64>>(threads);
+        let (tx, rx) = mpsc::sync_channel::<Vec<u64>>(THREADS);
 
-        for _ in 0..threads {
+        for _ in 0..THREADS {
             let tx = tx.clone();
             thread::spawn(move || {
                 let mut ids = Vec::with_capacity(10_000);
 
-                ids.push(GENERATOR.generate());
+                for _ in 0..10_000 {
+                    ids.push(GENERATOR.generate());
+                }
 
                 tx.send(ids).unwrap();
             });
         }
 
-        let mut ids = Vec::with_capacity(10_000 * threads);
-        for _ in 0..threads {
+        let mut ids = Vec::with_capacity(10_000 * THREADS);
+        for _ in 0..THREADS {
             ids.extend(rx.recv().unwrap());
         }
 
@@ -191,8 +210,13 @@ mod tests {
             for (index2, id2) in ids.iter().enumerate() {
                 if index != index2 && id == id2 {
                     panic!(
-                        "Found duplicate id {} at index {} and {}",
-                        id, index, index2
+                        "Found duplicate id {} (SEQ {}, INS {}, TS {}) at index {} and {}",
+                        id,
+                        id.sequence(),
+                        id.instance(),
+                        id.timestamp(),
+                        index,
+                        index2
                     );
                 }
             }
@@ -212,8 +236,13 @@ mod tests {
             for (index2, id2) in ids.iter().enumerate() {
                 if index != index2 && id == id2 {
                     panic!(
-                        "Found duplicate id {} at index {} and {}",
-                        id, index, index2
+                        "Found duplicate id {} (SEQ {}, INS {}, TS {}) at index {} and {}",
+                        id,
+                        id.sequence(),
+                        id.instance(),
+                        id.timestamp(),
+                        index,
+                        index2
                     );
                 }
             }
@@ -222,18 +251,13 @@ mod tests {
 
     #[test]
     fn test_generator_clone() {
-        let generator = Generator::new_unchecked(0);
+        let orig = Generator::new_unchecked(0);
 
-        let cloned = generator.clone();
+        let cloned = orig.clone();
 
-        assert_eq!(generator.instance, cloned.instance);
-        assert_eq!(
-            generator.sequence.load(Ordering::Relaxed),
-            cloned.sequence.load(Ordering::Relaxed),
-        );
-        assert_eq!(
-            generator.sequence.load(Ordering::Relaxed),
-            cloned.sequence.load(Ordering::Relaxed),
-        );
+        let orig_bits = Components::from_bits(orig.components.load(Ordering::Relaxed));
+        let cloned_bits = Components::from_bits(cloned.components.load(Ordering::Relaxed));
+
+        assert_eq!(orig_bits, cloned_bits);
     }
 }

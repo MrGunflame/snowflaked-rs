@@ -166,9 +166,7 @@ impl Snowflake for i64 {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Generator {
-    instance: u16,
-    sequence: u16,
-    timestamp: u64,
+    components: Components,
 }
 
 impl Generator {
@@ -239,9 +237,7 @@ impl Generator {
     #[inline]
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
-            instance,
-            sequence: 0,
-            timestamp: 0,
+            components: Components::new(instance as u64),
         }
     }
 
@@ -258,7 +254,7 @@ impl Generator {
     /// ```
     #[inline]
     pub fn instance(&self) -> u16 {
-        self.instance
+        self.components.instance() as u16
     }
 
     /// Generate a new unique snowflake id.
@@ -277,36 +273,122 @@ impl Generator {
     where
         T: Snowflake,
     {
-        self.sequence = (self.sequence + 1) % 4096;
+        let sequence = self.components.take_sequence();
 
+        let timestamp;
         loop {
-            let timestamp = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+            let now = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
 
-            if self.sequence != 0 || timestamp > self.timestamp {
-                self.timestamp = timestamp;
+            if sequence != 4095 || now > self.components.timestamp() {
+                self.components.set_timestamp(now);
+                timestamp = now;
                 break;
             }
 
             std::hint::spin_loop();
         }
 
-        let instance = self.instance as u64;
-        let sequence = self.sequence as u64;
+        let instance = self.components.instance();
 
-        T::from_parts(self.timestamp, instance, sequence)
+        T::from_parts(timestamp, instance, sequence)
+    }
+}
+
+/// A single `u64` representing the complete current state of a generator.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub(crate) struct Components(u64);
+
+impl Components {
+    #[inline]
+    pub(crate) const fn new(instance: u64) -> Self {
+        Self((instance << 12) & BITMASK_INSTANCE)
+    }
+
+    #[inline]
+    pub(crate) fn sequence(&self) -> u64 {
+        self.0 & BITMASK_SEQUENCE
+    }
+
+    #[inline]
+    pub(crate) fn instance(&self) -> u64 {
+        (self.0 & BITMASK_INSTANCE) >> 12
+    }
+
+    #[inline]
+    pub(crate) fn timestamp(&self) -> u64 {
+        self.0 >> 22
+    }
+
+    pub(crate) fn set_sequence(&mut self, seq: u64) {
+        let timestamp = self.timestamp() << 22;
+        let instance = (self.instance() << 12) & BITMASK_INSTANCE;
+        *self = Self(timestamp + instance + seq)
+    }
+
+    pub(crate) fn set_timestamp(&mut self, ts: u64) {
+        let timestamp = ts << 22;
+        let instance = (self.instance() << 12) & BITMASK_INSTANCE;
+        *self = Self(timestamp + instance + self.sequence())
+    }
+
+    #[inline]
+    pub(crate) fn take_sequence(&mut self) -> u64 {
+        match self.sequence() {
+            4095 => {
+                self.set_sequence(0);
+                4095
+            }
+            n => {
+                self.set_sequence(n + 1);
+                n
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) const fn from_bits(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    #[inline]
+    pub(crate) const fn to_bits(self) -> u64 {
+        self.0
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::UNIX_EPOCH;
+
     use super::Generator;
-    use crate::Snowflake;
+    use crate::{Components, Snowflake};
+
+    #[test]
+    fn test_components() {
+        let mut components = Components::new(0);
+        assert_eq!(components.sequence(), 0);
+        assert_eq!(components.timestamp(), 0);
+
+        components.set_sequence(1024);
+        assert_eq!(components.sequence(), 1024);
+        assert_eq!(components.timestamp(), 0);
+
+        components.set_timestamp(1024);
+        assert_eq!(components.sequence(), 1024);
+        assert_eq!(components.timestamp(), 1024);
+
+        let now = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+        components.set_timestamp(now);
+        assert_eq!(components.sequence(), 1024);
+        assert_eq!(components.timestamp(), now);
+    }
 
     #[test]
     fn test_generate() {
         const INSTANCE: u64 = 0;
 
-        let mut sequence = 1;
+        let mut sequence = 0;
         let mut generator = Generator::new_unchecked(INSTANCE as u16);
 
         for _ in 0..10_000 {
@@ -334,8 +416,13 @@ mod tests {
             for (index2, id2) in ids.iter().enumerate() {
                 if index != index2 && id == id2 {
                     panic!(
-                        "Found duplicate id {} at index {} and {}",
-                        id, index, index2
+                        "Found duplicate id {} (SEQ {}, INS {}, TS {}) at index {} and {}",
+                        id,
+                        id.sequence(),
+                        id.instance(),
+                        id.timestamp(),
+                        index,
+                        index2
                     );
                 }
             }
