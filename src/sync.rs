@@ -14,7 +14,7 @@
 //! }
 //! ```
 
-use crate::{Components, Snowflake, INSTANCE_MAX};
+use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,8 +54,11 @@ impl Generator {
     ///
     /// Panics if `instance` exceeds the maximum value (2^10 - 1).
     #[inline]
-    pub fn new(instance: u16) -> Self {
-        Self::new_checked(instance).expect("instance is too big for snowflake generator")
+    pub const fn new(instance: u16) -> Self {
+        match Self::new_checked(instance) {
+            Some(this) => this,
+            None => const_panic_new(),
+        }
     }
 
     /// Creates a new `Generator` using the given `instance`. Returns `None` if the instance

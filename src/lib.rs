@@ -194,8 +194,11 @@ impl Generator {
     /// let mut generator = Generator::new(10_000);
     /// ```
     #[inline]
-    pub fn new(instance: u16) -> Self {
-        Self::new_checked(instance).expect("instance is too big for snowflake generator")
+    pub const fn new(instance: u16) -> Self {
+        match Self::new_checked(instance) {
+            Some(this) => this,
+            None => const_panic_new(),
+        }
     }
 
     /// Creates a new `Generator` using the given `instance`. Returns `None` if the instance
@@ -355,6 +358,12 @@ impl Components {
     pub(crate) const fn to_bits(self) -> u64 {
         self.0
     }
+}
+
+/// Emits a panic with the appropriate message for providing an invalid instance id to
+/// a generator.
+pub(crate) const fn const_panic_new() -> ! {
+    panic!("invalid instance provided for snowflake generator");
 }
 
 #[cfg(test)]
