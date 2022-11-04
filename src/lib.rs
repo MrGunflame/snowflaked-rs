@@ -3,11 +3,29 @@
 //! Most notably this provides [`Snowflake`] for working with custom snowflake ids and
 //! [`Generator`] creating new snowflake ids.
 //!
+//! # Snowflake structure
+//!
+//! A snowflake id is a 64-bit integer generated using the current timestamp in milliseconds, a
+//! constant instance and a sequence number.
+//!
+//! ```
+//! 0               1               2                 3               4                 5               6               7
+//! 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 8 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 8 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
+//! +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//! |                                       Timestamp                                       |     Instance      |       Sequence      |
+//! +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//! ```
+//!
+//! - The [`Snowflake`] implementation for `u64` uses 42 bits for the timestamp, 10 bits for the
+//! instance and 12 bits for the sequence.
+//! - The [`Snowflake`] implementation for `i64` uses 41 bits for the timestamp, 10 bits for the
+//! instance and 12 bits for the sequence.
+//!
 //! # Custom snowflake ids
 //!
 //! Custom snowflake ids can be created with the [`Snowflake`] trait.
 //!
-//! # Example
+//! ## Example
 //! ```
 //! use snowflaked::Snowflake;
 //!
@@ -37,7 +55,7 @@
 //! [`Generator`] can be used to generate unique snowflake ids. Additionally [`sync::Generator`]
 //! can be used when working with multiple threads (requires the `sync` feature).
 //!
-//! # Example
+//! ## Example
 //! ```
 //! use snowflaked::Generator;
 //!
