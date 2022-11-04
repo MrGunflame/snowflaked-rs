@@ -10,7 +10,7 @@ A crate for creating and working with snowflake ids.
 Add `snowflaked` to your `Cargo.toml`:
 
 ```toml
-snowflaked = "0.1.5"
+snowflaked = "0.1.7"
 ```
 
 This crate provides APIs for generating new snowflake ids and defining custom snowflake types.
@@ -31,8 +31,7 @@ Or use the thread-safe `sync::Generator` type (requires the optional `sync` feat
 ```rust
 use snowflaked::sync::Generator;
 
-// Note that we can't (yet) panic in a const context, so we use `new_unchecked`.
-static GENERATOR: Generator = Generator::new_unchecked(0);
+static GENERATOR: Generator = Generator::new(0);
 
 fn generate_id() -> u64 {
     GENERATOR.generate()
