@@ -81,11 +81,15 @@
 //! `sync`: Enables the [`sync`] module.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+mod builder;
+
 #[cfg(feature = "sync")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
 pub mod sync;
 
-use std::time::UNIX_EPOCH;
+pub use builder::Builder;
+
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const BITMASK_INSTANCE: u64 = 0x3FF000;
 const BITMASK_SEQUENCE: u64 = 0xFFF;
@@ -167,6 +171,7 @@ impl Snowflake for i64 {
 #[derive(Clone, Debug)]
 pub struct Generator {
     components: Components,
+    epoch: SystemTime,
 }
 
 impl Generator {
@@ -241,7 +246,27 @@ impl Generator {
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
             components: Components::new(instance as u64),
+            epoch: UNIX_EPOCH,
         }
+    }
+
+    /// Creates a new `Builder` used to configure a `Generator`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// use std::time::SystemTime;
+    ///
+    /// let epoch = SystemTime::now();
+    /// let generator: Generator = Generator::builder().instance(123).epoch(epoch).build();
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// assert_eq!(generator.epoch(), epoch);
+    /// ```
+    #[inline]
+    pub const fn builder() -> Builder {
+        Builder::new()
     }
 
     /// Returns the configured instace component of this `Generator`.
@@ -258,6 +283,22 @@ impl Generator {
     #[inline]
     pub fn instance(&self) -> u16 {
         self.components.instance() as u16
+    }
+
+    /// Returns the configured epoch of this `Generator`. By default this is [`UNIX_EPOCH`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::Generator;
+    /// use std::time::UNIX_EPOCH;
+    ///
+    /// let generator = Generator::new(123);
+    /// assert_eq!(generator.epoch(), UNIX_EPOCH);
+    /// ```
+    #[inline]
+    pub fn epoch(&self) -> SystemTime {
+        self.epoch
     }
 
     /// Generate a new unique snowflake id.
@@ -280,7 +321,7 @@ impl Generator {
 
         let timestamp;
         loop {
-            let now = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+            let now = self.epoch.elapsed().unwrap().as_millis() as u64;
 
             if sequence != 4095 || now > self.components.timestamp() {
                 self.components.set_timestamp(now);
@@ -294,6 +335,15 @@ impl Generator {
         let instance = self.components.instance();
 
         T::from_parts(timestamp, instance, sequence)
+    }
+}
+
+impl From<Builder> for Generator {
+    fn from(builder: Builder) -> Self {
+        Self {
+            components: Components::new(builder.instance as u64),
+            epoch: builder.epoch,
+        }
     }
 }
 

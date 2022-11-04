@@ -7,18 +7,19 @@
 //! ```
 //! use snowflaked::sync::Generator;
 //!
-//! static GENERATOR: Generator = Generator::new_unchecked(0);
+//! static GENERATOR: Generator = Generator::new(0);
 //!
 //! fn generate_id() -> u64 {
 //!     GENERATOR.generate()
 //! }
 //! ```
 
-use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
-
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::builder::Builder;
+use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
 /// be used in a `static` context.
@@ -33,7 +34,7 @@ use std::time::UNIX_EPOCH;
 /// ```
 /// use snowflaked::sync::Generator;
 ///
-/// static GENERATOR: Generator = Generator::new_unchecked(0);
+/// static GENERATOR: Generator = Generator::new(0);
 ///
 /// fn generate_id() -> u64 {
 ///     GENERATOR.generate()
@@ -45,6 +46,7 @@ use std::time::UNIX_EPOCH;
 #[derive(Debug)]
 pub struct Generator {
     components: AtomicU64,
+    epoch: SystemTime,
 }
 
 impl Generator {
@@ -81,7 +83,27 @@ impl Generator {
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
             components: AtomicU64::new(Components::new(instance as u64).to_bits()),
+            epoch: UNIX_EPOCH,
         }
+    }
+
+    /// Creates a new `Builder` used to configure a `Generator`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::sync::Generator;
+    /// use std::time::SystemTime;
+    ///
+    /// let epoch = SystemTime::now();
+    /// let generator: Generator = Generator::builder().instance(123).epoch(epoch).build();
+    ///
+    /// assert_eq!(generator.instance(), 123);
+    /// assert_eq!(generator.epoch(), epoch);
+    /// ```
+    #[inline]
+    pub const fn builder() -> Builder {
+        Builder::new()
     }
 
     /// Returns the configured instance component of this `Generator`.
@@ -99,6 +121,22 @@ impl Generator {
     pub fn instance(&self) -> u16 {
         let bits = self.components.load(Ordering::Relaxed);
         Components::from_bits(bits).instance() as u16
+    }
+
+    /// Returns the configured epoch of this `Generator`. By default this is [`UNIX_EPOCH`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use snowflaked::sync::Generator;
+    /// use std::time::UNIX_EPOCH;
+    ///
+    /// let generator = Generator::new(123);
+    /// assert_eq!(generator.epoch(), UNIX_EPOCH);
+    /// ```
+    #[inline]
+    pub fn epoch(&self) -> SystemTime {
+        self.epoch
     }
 
     /// Generate a new unique snowflake id.
@@ -120,7 +158,7 @@ impl Generator {
 
                 let timestamp;
                 loop {
-                    let now = UNIX_EPOCH.elapsed().unwrap().as_millis() as u64;
+                    let now = self.epoch.elapsed().unwrap().as_millis() as u64;
 
                     if sequence != 4095 || now > components.timestamp() {
                         components.set_timestamp(now);
@@ -150,6 +188,16 @@ impl Clone for Generator {
 
         Self {
             components: AtomicU64::new(bits),
+            epoch: self.epoch,
+        }
+    }
+}
+
+impl From<Builder> for Generator {
+    fn from(builder: Builder) -> Self {
+        Self {
+            components: AtomicU64::new(Components::new(builder.instance as u64).to_bits()),
+            epoch: builder.epoch,
         }
     }
 }
