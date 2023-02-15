@@ -430,6 +430,8 @@ impl Components {
 
 /// Emits a panic with the appropriate message for providing an invalid instance id to
 /// a generator.
+#[inline(never)]
+#[cold]
 pub(crate) const fn const_panic_new() -> ! {
     panic!("invalid instance provided for snowflake generator");
 }
