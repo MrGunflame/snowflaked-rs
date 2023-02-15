@@ -186,7 +186,7 @@ impl Snowflake for i64 {
 ///
 /// let id: u64 = generator.generate();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Generator {
     components: Components,
     epoch: SystemTime,

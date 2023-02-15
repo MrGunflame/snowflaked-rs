@@ -182,17 +182,6 @@ impl Generator {
     }
 }
 
-impl Clone for Generator {
-    fn clone(&self) -> Self {
-        let bits = self.components.load(Ordering::Relaxed);
-
-        Self {
-            components: AtomicU64::new(bits),
-            epoch: self.epoch,
-        }
-    }
-}
-
 impl From<Builder> for Generator {
     fn from(builder: Builder) -> Self {
         Self {
@@ -204,12 +193,11 @@ impl From<Builder> for Generator {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
     use std::sync::mpsc;
     use std::thread;
 
     use super::Generator;
-    use crate::{Components, Snowflake};
+    use crate::Snowflake;
 
     #[test]
     fn test_generate() {
@@ -300,15 +288,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_generator_clone() {
-        let orig = Generator::new_unchecked(0);
+    // #[test]
+    // fn test_generator_clone() {
+    //     let orig = Generator::new_unchecked(0);
 
-        let cloned = orig.clone();
+    //     let cloned = orig.clone();
 
-        let orig_bits = Components::from_bits(orig.components.load(Ordering::Relaxed));
-        let cloned_bits = Components::from_bits(cloned.components.load(Ordering::Relaxed));
+    //     let orig_bits = Components::from_bits(orig.components.load(Ordering::Relaxed));
+    //     let cloned_bits = Components::from_bits(cloned.components.load(Ordering::Relaxed));
 
-        assert_eq!(orig_bits, cloned_bits);
-    }
+    //     assert_eq!(orig_bits, cloned_bits);
+    // }
 }
