@@ -10,7 +10,7 @@ A crate for creating and working with snowflake ids.
 Add `snowflaked` to your `Cargo.toml`:
 
 ```toml
-snowflaked = "0.1.8"
+snowflaked = "1.0.0"
 ```
 
 This crate provides APIs for generating new snowflake ids and defining custom snowflake types.
