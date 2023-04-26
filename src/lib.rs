@@ -154,7 +154,7 @@ impl Snowflake for u64 {
 
 impl Snowflake for i64 {
     fn from_parts(timestamp: u64, instance: u64, sequence: u64) -> Self {
-        let timestamp = timestamp << 22;
+        let timestamp = timestamp << 23;
         let instance = (instance << 12) & BITMASK_INSTANCE;
         timestamp as i64 + instance as i64 + sequence as i64
     }
@@ -532,5 +532,15 @@ mod tests {
         assert_eq!(id.timestamp(), 205523204525);
         assert_eq!(id.instance(), 256);
         assert_eq!(id.sequence(), 2);
+    }
+
+    #[test]
+    fn i64_no_negative() {
+        let timestamp = 2297684976571;
+        let instance = 0;
+        let sequence = 0;
+
+        let id = i64::from_parts(timestamp, instance, sequence);
+        assert!(id >= 0);
     }
 }
