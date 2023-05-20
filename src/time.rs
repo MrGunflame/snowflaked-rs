@@ -9,6 +9,7 @@ pub(crate) trait DefaultTime {
 }
 
 impl Time for SystemTime {
+    #[inline]
     fn elapsed(&self) -> Duration {
         self.elapsed().expect("clock went backwards")
     }
