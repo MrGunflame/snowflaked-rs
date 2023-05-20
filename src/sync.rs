@@ -16,9 +16,10 @@
 
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use crate::builder::Builder;
+use crate::time::Time;
 use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
@@ -43,10 +44,8 @@ use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 ///
 /// [`generate`]: Self::generate
 /// [`Arc`]: std::sync::Arc
-#[derive(Debug)]
 pub struct Generator {
-    components: AtomicU64,
-    epoch: SystemTime,
+    internal: InternalGenerator<SystemTime>,
 }
 
 impl Generator {
@@ -82,8 +81,7 @@ impl Generator {
     #[inline]
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
-            components: AtomicU64::new(Components::new(instance as u64).to_bits()),
-            epoch: UNIX_EPOCH,
+            internal: InternalGenerator::new_unchecked(instance),
         }
     }
 
@@ -119,8 +117,7 @@ impl Generator {
     /// ```
     #[inline]
     pub fn instance(&self) -> u16 {
-        let bits = self.components.load(Ordering::Relaxed);
-        Components::from_bits(bits).instance() as u16
+        self.internal.instance()
     }
 
     /// Returns the configured epoch of this `Generator`. By default this is [`UNIX_EPOCH`].
@@ -136,13 +133,64 @@ impl Generator {
     /// ```
     #[inline]
     pub fn epoch(&self) -> SystemTime {
-        self.epoch
+        self.internal.epoch()
     }
 
     /// Generate a new unique snowflake id.
     pub fn generate<T>(&self) -> T
     where
         T: Snowflake,
+    {
+        self.internal.generate(std::hint::spin_loop)
+    }
+}
+
+impl From<Builder> for Generator {
+    fn from(builder: Builder) -> Self {
+        let internal = InternalGenerator {
+            components: AtomicU64::new(Components::new(builder.instance as u64).to_bits()),
+            epoch: builder.epoch,
+        };
+
+        Self { internal }
+    }
+}
+
+#[derive(Debug)]
+struct InternalGenerator<T>
+where
+    T: Time,
+{
+    components: AtomicU64,
+    epoch: T,
+}
+
+impl<T> InternalGenerator<T>
+where
+    T: Time,
+{
+    #[inline]
+    const fn new_unchecked(instance: u16) -> Self {
+        Self {
+            components: AtomicU64::new(Components::new(instance as u64).to_bits()),
+            epoch: T::DEFAULT,
+        }
+    }
+
+    #[inline]
+    fn instance(&self) -> u16 {
+        let bits = self.components.load(Ordering::Relaxed);
+        Components::from_bits(bits).instance() as u16
+    }
+
+    #[inline]
+    fn epoch(&self) -> T {
+        self.epoch
+    }
+
+    fn generate<S>(&self, tick_wait: fn()) -> S
+    where
+        S: Snowflake,
     {
         // Even thought we only assign this value once we need to assign this value to
         // something before passing it (reference) into the closure.
@@ -158,7 +206,7 @@ impl Generator {
 
                 let timestamp;
                 loop {
-                    let now = self.epoch.elapsed().unwrap().as_millis() as u64;
+                    let now = self.epoch.elapsed().as_millis() as u64;
 
                     if sequence != 4095 || now > components.timestamp() {
                         components.set_timestamp(now);
@@ -166,12 +214,12 @@ impl Generator {
                         break;
                     }
 
-                    std::hint::spin_loop();
+                    tick_wait();
                 }
 
                 let instance = components.instance();
 
-                id.write(T::from_parts(timestamp, instance, sequence));
+                id.write(S::from_parts(timestamp, instance, sequence));
 
                 Some(components.to_bits())
             });
@@ -179,15 +227,6 @@ impl Generator {
         // SAFETY: The call to `fetch_update` only completes once the closure ran fully.
         // At this point `id` has been initialized from within the closure.
         unsafe { id.assume_init() }
-    }
-}
-
-impl From<Builder> for Generator {
-    fn from(builder: Builder) -> Self {
-        Self {
-            components: AtomicU64::new(Components::new(builder.instance as u64).to_bits()),
-            epoch: builder.epoch,
-        }
     }
 }
 
