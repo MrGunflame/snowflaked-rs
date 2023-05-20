@@ -44,6 +44,7 @@ use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 ///
 /// [`generate`]: Self::generate
 /// [`Arc`]: std::sync::Arc
+#[derive(Debug)]
 pub struct Generator {
     internal: InternalGenerator<SystemTime>,
 }
@@ -134,6 +135,8 @@ impl Generator {
     /// let generator = Generator::new(123);
     /// assert_eq!(generator.epoch(), UNIX_EPOCH);
     /// ```
+    ///
+    /// [`UNIX_EPOCH`]: std::time::UNIX_EPOCH
     #[inline]
     pub fn epoch(&self) -> SystemTime {
         self.internal.epoch()
