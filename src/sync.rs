@@ -15,10 +15,10 @@
 //! ```
 
 use std::mem::MaybeUninit;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use crate::builder::Builder;
+use crate::loom::{AtomicU64, Ordering};
 use crate::time::Time;
 use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 
@@ -54,6 +54,7 @@ impl Generator {
     /// # Panics
     ///
     /// Panics if `instance` exceeds the maximum value (2^10 - 1).
+    #[cfg(not(loom))]
     #[inline]
     pub const fn new(instance: u16) -> Self {
         match Self::new_checked(instance) {
@@ -64,6 +65,7 @@ impl Generator {
 
     /// Creates a new `Generator` using the given `instance`. Returns `None` if the instance
     /// exceeds the maximum instance value (2^10 - 1).
+    #[cfg(not(loom))]
     #[inline]
     pub const fn new_checked(instance: u16) -> Option<Self> {
         if instance > INSTANCE_MAX {
@@ -78,6 +80,7 @@ impl Generator {
     ///
     /// Note: If `instance` exceeds the maximum value the `Generator` will create incorrect
     /// snowflakes.
+    #[cfg(not(loom))]
     #[inline]
     pub const fn new_unchecked(instance: u16) -> Self {
         Self {
@@ -169,8 +172,20 @@ impl<T> InternalGenerator<T>
 where
     T: Time,
 {
+    #[cfg(not(loom))]
     #[inline]
     const fn new_unchecked(instance: u16) -> Self {
+        Self {
+            components: AtomicU64::new(Components::new(instance as u64).to_bits()),
+            epoch: T::DEFAULT,
+        }
+    }
+
+    // AtomicU64 is not const, we have to choose a different code path
+    // than the regular `new_unchecked`.
+    #[cfg(loom)]
+    #[inline]
+    fn new_unchecked(instance: u16) -> Self {
         Self {
             components: AtomicU64::new(Components::new(instance as u64).to_bits()),
             epoch: T::DEFAULT,
@@ -184,13 +199,17 @@ where
     }
 
     #[inline]
-    fn epoch(&self) -> T {
+    fn epoch(&self) -> T
+    where
+        T: Copy,
+    {
         self.epoch
     }
 
-    fn generate<S>(&self, tick_wait: fn()) -> S
+    fn generate<S, F>(&self, tick_wait: F) -> S
     where
         S: Snowflake,
+        F: Fn(),
     {
         // Even thought we only assign this value once we need to assign this value to
         // something before passing it (reference) into the closure.
@@ -230,7 +249,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::sync::mpsc;
     use std::thread;
@@ -338,4 +357,137 @@ mod tests {
 
     //     assert_eq!(orig_bits, cloned_bits);
     // }
+}
+
+#[cfg(all(test, loom))]
+mod loom_tests {
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
+
+    use loom::thread;
+
+    use super::InternalGenerator;
+    use crate::loom::Ordering;
+    use crate::time::Time;
+    use crate::Components;
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct TestTime(u64);
+
+    impl Time for TestTime {
+        const DEFAULT: Self = Self(0);
+
+        fn elapsed(&self) -> Duration {
+            Duration::from_millis(self.0)
+        }
+    }
+
+    fn panic_on_wait() {
+        panic!("unexpected wait");
+    }
+
+    const THREADS: usize = 2;
+
+    #[test]
+    fn no_duplicates_no_wrap() {
+        loom::model(|| {
+            let generator = Arc::new(InternalGenerator::<TestTime>::new_unchecked(0));
+            let (tx, rx) = mpsc::channel();
+
+            let threads: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let generator = generator.clone();
+                    let tx = tx.clone();
+
+                    thread::spawn(move || {
+                        let id: u64 = generator.generate(panic_on_wait);
+                        tx.send(id).unwrap();
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+
+            let id1 = rx.recv().unwrap();
+            let id2 = rx.recv().unwrap();
+            assert_ne!(id1, id2);
+        });
+    }
+
+    #[test]
+    fn no_duplicates_wrap() {
+        static DEFAULT_TIME: Mutex<u64> = Mutex::new(0);
+
+        // FIXME: Using raw pointers here is not optimal, but
+        // required to get DEFAULT working. Maybe
+        #[derive(Copy, Clone, Debug)]
+        struct TestTimeWrap(*const Mutex<u64>);
+
+        impl Time for TestTimeWrap {
+            const DEFAULT: Self = Self(std::ptr::null());
+
+            fn elapsed(&self) -> Duration {
+                assert!(!self.0.is_null());
+
+                let lock = unsafe { &*self.0 };
+                let ms = lock.lock().unwrap();
+                Duration::from_millis(*ms)
+            }
+        }
+
+        loom::model(|| {
+            let ticked = Arc::new(Mutex::new(false));
+
+            let time = &*Box::leak(Box::new(Mutex::new(0)));
+
+            let mut generator = InternalGenerator::<TestTimeWrap>::new_unchecked(0);
+            generator.epoch = TestTimeWrap(time);
+
+            // Move the generator into a wrapping state.
+            generator.components.with_mut(|bits| {
+                let mut components = Components::from_bits(*bits);
+                components.set_sequence(4095);
+                *bits = components.to_bits();
+            });
+
+            let generator = Arc::new(generator);
+            let (tx, rx) = mpsc::channel();
+
+            let threads: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let ticked = ticked.clone();
+                    let generator = generator.clone();
+                    let tx = tx.clone();
+
+                    thread::spawn(move || {
+                        let id: u64 = generator.generate(move || {
+                            let mut ticked = ticked.lock().unwrap();
+
+                            if !*ticked {
+                                *ticked = true;
+
+                                let mut ms = time.lock().unwrap();
+                                *ms += 1;
+                            }
+                        });
+
+                        tx.send(id).unwrap();
+                    })
+                })
+                .collect();
+
+            for th in threads {
+                th.join().unwrap();
+            }
+
+            let id1 = rx.recv().unwrap();
+            let id2 = rx.recv().unwrap();
+            assert_ne!(id1, id2);
+
+            // Clean Box after iteration.
+            unsafe { Box::from_raw(time as *const Mutex<u64> as *mut Mutex<u64>) };
+        });
+    }
 }

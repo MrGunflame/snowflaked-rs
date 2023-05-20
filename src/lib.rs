@@ -100,6 +100,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod builder;
+mod loom;
 mod time;
 
 #[cfg(feature = "sync")]
@@ -437,7 +438,7 @@ pub(crate) const fn const_panic_new() -> ! {
     panic!("invalid instance provided for snowflake generator");
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::time::UNIX_EPOCH;
 
