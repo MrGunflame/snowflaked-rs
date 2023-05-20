@@ -19,7 +19,7 @@ use std::time::SystemTime;
 
 use crate::builder::Builder;
 use crate::loom::{AtomicU64, Ordering};
-use crate::time::Time;
+use crate::time::{DefaultTime, Time};
 use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
@@ -174,7 +174,10 @@ where
 {
     #[cfg(not(loom))]
     #[inline]
-    const fn new_unchecked(instance: u16) -> Self {
+    const fn new_unchecked(instance: u16) -> Self
+    where
+        T: DefaultTime,
+    {
         Self {
             components: AtomicU64::new(Components::new(instance as u64).to_bits()),
             epoch: T::DEFAULT,
@@ -185,10 +188,22 @@ where
     // than the regular `new_unchecked`.
     #[cfg(loom)]
     #[inline]
-    fn new_unchecked(instance: u16) -> Self {
+    fn new_unchecked(instance: u16) -> Self
+    where
+        T: DefaultTime,
+    {
         Self {
             components: AtomicU64::new(Components::new(instance as u64).to_bits()),
             epoch: T::DEFAULT,
+        }
+    }
+
+    #[cfg(loom)]
+    #[inline]
+    fn new_unchecked_with_epoch(instance: u16, epoch: T) -> Self {
+        Self {
+            components: AtomicU64::new(Components::new(instance as u64).to_bits()),
+            epoch,
         }
     }
 
@@ -368,18 +383,20 @@ mod loom_tests {
 
     use super::InternalGenerator;
     use crate::loom::Ordering;
-    use crate::time::Time;
+    use crate::time::{DefaultTime, Time};
     use crate::Components;
 
     #[derive(Copy, Clone, Debug)]
     pub struct TestTime(u64);
 
     impl Time for TestTime {
-        const DEFAULT: Self = Self(0);
-
         fn elapsed(&self) -> Duration {
             Duration::from_millis(self.0)
         }
+    }
+
+    impl DefaultTime for TestTime {
+        const DEFAULT: Self = Self(0);
     }
 
     fn panic_on_wait() {
@@ -422,28 +439,22 @@ mod loom_tests {
 
         // FIXME: Using raw pointers here is not optimal, but
         // required to get DEFAULT working. Maybe
-        #[derive(Copy, Clone, Debug)]
-        struct TestTimeWrap(*const Mutex<u64>);
+        #[derive(Clone, Debug)]
+        struct TestTimeWrap(Arc<Mutex<u64>>);
 
         impl Time for TestTimeWrap {
-            const DEFAULT: Self = Self(std::ptr::null());
-
             fn elapsed(&self) -> Duration {
-                assert!(!self.0.is_null());
-
-                let lock = unsafe { &*self.0 };
-                let ms = lock.lock().unwrap();
+                let ms = self.0.lock().unwrap();
                 Duration::from_millis(*ms)
             }
         }
 
         loom::model(|| {
             let ticked = Arc::new(Mutex::new(false));
+            let time = Arc::new(Mutex::new(0));
 
-            let time = &*Box::leak(Box::new(Mutex::new(0)));
-
-            let mut generator = InternalGenerator::<TestTimeWrap>::new_unchecked(0);
-            generator.epoch = TestTimeWrap(time);
+            let mut generator =
+                InternalGenerator::new_unchecked_with_epoch(0, TestTimeWrap(time.clone()));
 
             // Move the generator into a wrapping state.
             generator.components.with_mut(|bits| {
@@ -458,6 +469,8 @@ mod loom_tests {
             let threads: Vec<_> = (0..THREADS)
                 .map(|_| {
                     let ticked = ticked.clone();
+                    let time = time.clone();
+
                     let generator = generator.clone();
                     let tx = tx.clone();
 
@@ -485,9 +498,6 @@ mod loom_tests {
             let id1 = rx.recv().unwrap();
             let id2 = rx.recv().unwrap();
             assert_ne!(id1, id2);
-
-            // Clean Box after iteration.
-            unsafe { Box::from_raw(time as *const Mutex<u64> as *mut Mutex<u64>) };
         });
     }
 }
