@@ -43,4 +43,4 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - run: rustup update stable && rustup default stable
-    - run: RUSTFLAGS="--cfg loom" cargo test --lib --release
+    - run: RUSTFLAGS="--cfg loom" cargo test --lib --all-features --release
