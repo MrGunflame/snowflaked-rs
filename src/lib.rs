@@ -154,9 +154,10 @@ impl Snowflake for u64 {
 
 impl Snowflake for i64 {
     fn from_parts(timestamp: u64, instance: u64, sequence: u64) -> Self {
-        let timestamp = timestamp << 23;
+        // Don't set the sign bit.
+        let timestamp = (timestamp << 22) & (i64::MAX as u64);
         let instance = (instance << 12) & BITMASK_INSTANCE;
-        timestamp as i64 + instance as i64 + sequence as i64
+        (timestamp | instance | sequence) as i64
     }
 
     #[inline]
@@ -542,5 +543,45 @@ mod tests {
 
         let id = i64::from_parts(timestamp, instance, sequence);
         assert!(id >= 0);
+    }
+
+    #[test]
+    fn i64_reflexive() {
+        let timestamp = 1684917000190;
+        let instance = 0;
+        let sequence = 2056;
+
+        let id = i64::from_parts(timestamp, instance, sequence);
+
+        assert_eq!(id.timestamp(), timestamp);
+        assert_eq!(id.instance(), instance);
+        assert_eq!(id.sequence(), sequence);
+    }
+
+    #[test]
+    fn u64_reflexive() {
+        let timestamp = 1684917075097;
+        let instance = 0;
+        let sequence = 1086;
+
+        let id = u64::from_parts(timestamp, instance, sequence);
+
+        assert_eq!(id.timestamp(), timestamp);
+        assert_eq!(id.instance(), instance);
+        assert_eq!(id.sequence(), sequence);
+    }
+
+    #[test]
+    fn u64_i64_equivalent() {
+        let timestamp = 1684917177537;
+        let instance = 0;
+        let sequence = 3060;
+
+        let id0 = u64::from_parts(timestamp, instance, sequence);
+        let id1 = i64::from_parts(timestamp, instance, sequence);
+
+        assert_eq!(id0.timestamp(), id1.timestamp());
+        assert_eq!(id0.instance(), id1.instance());
+        assert_eq!(id0.sequence(), id1.sequence());
     }
 }
