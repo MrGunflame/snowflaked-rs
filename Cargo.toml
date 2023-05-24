@@ -12,6 +12,9 @@ license = "MIT OR Apache-2.0"
 default = []
 sync = []
 
+[target.'cfg(loom)'.dependencies]
+loom = "0.5"
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

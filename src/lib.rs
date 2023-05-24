@@ -100,6 +100,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod builder;
+mod loom;
+mod time;
 
 #[cfg(feature = "sync")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sync")))]
@@ -133,7 +135,7 @@ impl Snowflake for u64 {
     fn from_parts(timestamp: u64, instance: u64, sequence: u64) -> Self {
         let timestamp = timestamp << 22;
         let instance = (instance << 12) & BITMASK_INSTANCE;
-        timestamp + instance + sequence
+        timestamp | instance | sequence
     }
 
     #[inline]
@@ -437,7 +439,7 @@ pub(crate) const fn const_panic_new() -> ! {
     panic!("invalid instance provided for snowflake generator");
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(loom)))]
 mod tests {
     use std::time::UNIX_EPOCH;
 
