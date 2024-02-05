@@ -21,6 +21,16 @@
 //! - The [`Snowflake`] implementation for `i64` uses 41 bits for the timestamp, 10 bits for the
 //! instance and 12 bits for the sequence.
 //!
+//! ## Timestamp overflow
+//!
+//! Since the timestamp range is limited it is possible for the timestamp to overflow and wrap
+//! around after a specific date. For the by-default configured UNIX epoch these dates are:
+//! - For `i64`: Sep 07 2039 15:47:35 (`2039-09-07T15:47:35Z`)
+//! - For `u64`: May 15 2109 07:35:11 (`2109-05-15T07:35:11Z`)
+//!
+//! If overflowing after these dates is not acceptable for you [`Builder::epoch`] allows
+//! configuring a custom epoch.
+//!
 //! # Custom snowflake ids
 //!
 //! Custom snowflake ids can be created with the [`Snowflake`] trait.
