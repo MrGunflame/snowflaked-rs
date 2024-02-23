@@ -350,7 +350,6 @@ impl Generator {
     {
         use std::cmp::Ordering;
 
-        let sequence;
         let mut now = self.epoch.elapsed().unwrap().as_millis() as u64;
         let instance = self.components.instance();
         match now.cmp(&self.components.timestamp()) {
@@ -363,7 +362,7 @@ impl Generator {
                 T::from_parts(now, instance, 0)
             },
             Ordering::Equal => {
-                sequence = self.components.take_sequence();
+                let sequence = self.components.take_sequence();
                 if sequence == 0 {
                     now = self.wait_until_next_millisecond(now);
                 }
