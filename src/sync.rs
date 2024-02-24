@@ -271,10 +271,6 @@ where
         F: Fn(),
     {
         loop {
-            println!(
-                "Waiting until the next millisecond from {}",
-                last_millisecond
-            );
             let now = epoch.elapsed().as_millis() as u64;
             if now > last_millisecond {
                 return now;
