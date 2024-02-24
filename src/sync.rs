@@ -254,6 +254,7 @@ where
                     }
                     cmp::Ordering::Equal => {
                         let sequence = components.take_sequence();
+                        dbg!((now, instance, sequence));
                         if sequence == 0 {
                             now = Self::wait_until_next_millisecond(&self.epoch, now, &tick_wait);
                         }
@@ -271,6 +272,7 @@ where
         F: Fn(),
     {
         loop {
+            println!("Waiting until the next millisecond from {}", last_millisecond);
             let now = epoch.elapsed().as_millis() as u64;
             if now > last_millisecond {
                 return now;

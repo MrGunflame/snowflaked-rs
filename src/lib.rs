@@ -400,7 +400,8 @@ pub(crate) struct Components(u64);
 impl Components {
     #[inline]
     pub(crate) const fn new(instance: u64) -> Self {
-        Self((instance << 12) & BITMASK_INSTANCE)
+        // Fill in the given instance, and set the sequence at '1'
+        Self((instance << 12) & BITMASK_INSTANCE | 1)
     }
 
     #[inline]
