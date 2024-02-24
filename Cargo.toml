@@ -1,6 +1,6 @@
 [package]
 name = "snowflaked"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "A crate for creating and working with snowflake ids"
 authors = ["MrGunflame <mrgunflame@protonmail.com>"]
