@@ -272,7 +272,10 @@ where
         F: Fn(),
     {
         loop {
-            println!("Waiting until the next millisecond from {}", last_millisecond);
+            println!(
+                "Waiting until the next millisecond from {}",
+                last_millisecond
+            );
             let now = epoch.elapsed().as_millis() as u64;
             if now > last_millisecond {
                 return now;
@@ -430,18 +433,17 @@ mod loom_tests {
             let generator = Arc::new(InternalGenerator::<TestTime>::new_unchecked(0));
             let (tx, rx) = mpsc::channel();
 
-            let threads: Vec<_> =
-                (0..THREADS)
-                    .map(|_| {
-                        let generator = generator.clone();
-                        let tx = tx.clone();
+            let threads: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let generator = generator.clone();
+                    let tx = tx.clone();
 
-                        thread::spawn(move || {
-                            let id: u64 = generator.generate(panic_on_wait);
-                            tx.send(id).unwrap();
-                        })
+                    thread::spawn(move || {
+                        let id: u64 = generator.generate(panic_on_wait);
+                        tx.send(id).unwrap();
                     })
-                    .collect();
+                })
+                .collect();
 
             for th in threads {
                 th.join().unwrap();

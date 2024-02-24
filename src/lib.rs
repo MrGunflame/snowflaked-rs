@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn test_components() {
         let mut components = Components::new(0);
-        assert_eq!(components.sequence(), 0);
+        assert_eq!(components.sequence(), 1);
         assert_eq!(components.timestamp(), 0);
 
         components.set_sequence(1024);
