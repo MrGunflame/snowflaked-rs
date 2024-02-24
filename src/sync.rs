@@ -254,7 +254,6 @@ where
                     }
                     cmp::Ordering::Equal => {
                         let sequence = components.take_sequence();
-                        dbg!((now, instance, sequence));
                         if sequence == 0 {
                             now = Self::wait_until_next_millisecond(&self.epoch, now, &tick_wait);
                         }
