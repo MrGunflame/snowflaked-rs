@@ -14,7 +14,6 @@
 //! }
 //! ```
 
-use std::mem::MaybeUninit;
 use std::time::SystemTime;
 
 use crate::builder::Builder;
@@ -229,41 +228,55 @@ where
         S: Snowflake,
         F: Fn(),
     {
-        // Even thought we only assign this value once we need to assign this value to
-        // something before passing it (reference) into the closure.
-        // This value is safe to read after the closure completes.
-        let mut id = MaybeUninit::uninit();
+        use std::cmp;
+
+        // Since `fetch_update` doesn't return a result,
+        // we store the result in this mutable variable.
+        // Note that using MaybeUninit is not necessary
+        // as the compiler is smart enough to elide the Option for us.
+        let mut id = None;
 
         let _ = self
             .components
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bits| {
                 let mut components = Components::from_bits(bits);
-
-                let sequence = components.take_sequence();
-
-                let timestamp;
-                loop {
-                    let now = self.epoch.elapsed().as_millis() as u64;
-
-                    if sequence != 4095 || now > components.timestamp() {
-                        components.set_timestamp(now);
-                        timestamp = now;
-                        break;
-                    }
-
-                    tick_wait();
-                }
-
+                let mut now = self.epoch.elapsed().as_millis() as u64;
                 let instance = components.instance();
-
-                id.write(S::from_parts(timestamp, instance, sequence));
-
-                Some(components.to_bits())
+                match now.cmp(&components.timestamp()) {
+                    cmp::Ordering::Less => {
+                        panic!("Clock has moved backwards! This is not supported");
+                    }
+                    cmp::Ordering::Greater => {
+                        components.reset_sequence();
+                        components.set_timestamp(now);
+                        id = Some(S::from_parts(now, instance, 0));
+                        Some(components.to_bits())
+                    }
+                    cmp::Ordering::Equal => {
+                        let sequence = components.take_sequence();
+                        if sequence == 0 {
+                            now = Self::wait_until_next_millisecond(&self.epoch, now, &tick_wait);
+                        }
+                        components.set_timestamp(now);
+                        id = Some(S::from_parts(now, instance, sequence));
+                        Some(components.to_bits())
+                    }
+                }
             });
+        id.expect("ID should have been set within the fetch_update closure.")
+    }
 
-        // SAFETY: The call to `fetch_update` only completes once the closure ran fully.
-        // At this point `id` has been initialized from within the closure.
-        unsafe { id.assume_init() }
+    fn wait_until_next_millisecond<F>(epoch: &T, last_millisecond: u64, tick_wait: F) -> u64
+    where
+        F: Fn(),
+    {
+        loop {
+            let now = epoch.elapsed().as_millis() as u64;
+            if now > last_millisecond {
+                return now;
+            }
+            tick_wait();
+        }
     }
 }
 
@@ -279,18 +292,19 @@ mod tests {
     fn test_generate() {
         const INSTANCE: u64 = 0;
 
-        let mut sequence = 0;
+        let mut last_id = None;
         let generator = Generator::new_unchecked(INSTANCE as u16);
 
         for _ in 0..10_000 {
             let id: u64 = generator.generate();
             assert_eq!(id.instance(), INSTANCE);
-            assert_eq!(id.sequence(), sequence);
-
-            match sequence {
-                4095 => sequence = 0,
-                _ => sequence += 1,
-            }
+            assert!(
+                last_id < Some(id),
+                "expected {:?} to be less than {:?}",
+                last_id,
+                Some(id)
+            );
+            last_id = Some(id);
         }
     }
 

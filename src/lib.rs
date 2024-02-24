@@ -348,24 +348,38 @@ impl Generator {
     where
         T: Snowflake,
     {
-        let sequence = self.components.take_sequence();
+        use std::cmp::Ordering;
 
-        let timestamp;
+        let mut now = self.epoch.elapsed().unwrap().as_millis() as u64;
+        let instance = self.components.instance();
+        match now.cmp(&self.components.timestamp()) {
+            Ordering::Less => {
+                panic!("Clock has moved backwards! This is not supported.");
+            }
+            Ordering::Greater => {
+                self.components.reset_sequence();
+                self.components.set_timestamp(now);
+                T::from_parts(now, instance, 0)
+            }
+            Ordering::Equal => {
+                let sequence = self.components.take_sequence();
+                if sequence == 0 {
+                    now = self.wait_until_next_millisecond(now);
+                }
+                self.components.set_timestamp(now);
+                T::from_parts(now, instance, sequence)
+            }
+        }
+    }
+
+    fn wait_until_next_millisecond(&mut self, last_millisecond: u64) -> u64 {
         loop {
             let now = self.epoch.elapsed().unwrap().as_millis() as u64;
-
-            if sequence != 4095 || now > self.components.timestamp() {
-                self.components.set_timestamp(now);
-                timestamp = now;
-                break;
+            if now > last_millisecond {
+                return now;
             }
-
             std::hint::spin_loop();
         }
-
-        let instance = self.components.instance();
-
-        T::from_parts(timestamp, instance, sequence)
     }
 }
 
@@ -386,7 +400,8 @@ pub(crate) struct Components(u64);
 impl Components {
     #[inline]
     pub(crate) const fn new(instance: u64) -> Self {
-        Self((instance << 12) & BITMASK_INSTANCE)
+        // Fill in the given instance, and set the sequence at '1'
+        Self((instance << 12) & BITMASK_INSTANCE | 1)
     }
 
     #[inline]
@@ -408,6 +423,10 @@ impl Components {
         let timestamp = self.timestamp() << 22;
         let instance = (self.instance() << 12) & BITMASK_INSTANCE;
         *self = Self(timestamp + instance + seq)
+    }
+
+    pub(crate) fn reset_sequence(&mut self) {
+        self.set_sequence(1)
     }
 
     pub(crate) fn set_timestamp(&mut self, ts: u64) {
@@ -459,7 +478,7 @@ mod tests {
     #[test]
     fn test_components() {
         let mut components = Components::new(0);
-        assert_eq!(components.sequence(), 0);
+        assert_eq!(components.sequence(), 1);
         assert_eq!(components.timestamp(), 0);
 
         components.set_sequence(1024);
@@ -477,21 +496,22 @@ mod tests {
     }
 
     #[test]
-    fn test_generate() {
+    fn test_generate_ordered() {
         const INSTANCE: u64 = 0;
 
-        let mut sequence = 0;
+        let mut last_id = None;
         let mut generator = Generator::new_unchecked(INSTANCE as u16);
 
         for _ in 0..10_000 {
             let id: u64 = generator.generate();
             assert_eq!(id.instance(), INSTANCE);
-            assert_eq!(id.sequence(), sequence);
-
-            match sequence {
-                4095 => sequence = 0,
-                _ => sequence += 1,
-            }
+            assert!(
+                last_id < Some(id),
+                "expected {:?} to be less than {:?}",
+                last_id,
+                Some(id)
+            );
+            last_id = Some(id);
         }
     }
 
