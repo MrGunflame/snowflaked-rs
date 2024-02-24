@@ -146,7 +146,7 @@ impl Generator {
     where
         T: Snowflake,
     {
-        self.internal.generate(&std::hint::spin_loop)
+        self.internal.generate(std::hint::spin_loop)
     }
 }
 
@@ -223,7 +223,7 @@ where
         self.epoch
     }
 
-    fn generate<S, F>(&self, tick_wait: &F) -> S
+    fn generate<S, F>(&self, tick_wait: F) -> S
     where
         S: Snowflake,
         F: Fn(),
@@ -255,7 +255,7 @@ where
                     cmp::Ordering::Equal => {
                         let sequence = components.take_sequence();
                         if sequence == 0 {
-                            now = Self::wait_until_next_millisecond(&self.epoch, now, tick_wait);
+                            now = Self::wait_until_next_millisecond(&self.epoch, now, &tick_wait);
                         }
                         components.set_timestamp(now);
                         id = Some(S::from_parts(now, instance, sequence));
