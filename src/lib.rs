@@ -425,7 +425,7 @@ impl Components {
     }
 
     pub(crate) fn reset_sequence(&mut self) {
-        self.set_sequence(4095)
+        self.set_sequence(1)
     }
 
     pub(crate) fn set_timestamp(&mut self, ts: u64) {
