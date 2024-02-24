@@ -355,12 +355,12 @@ impl Generator {
         match now.cmp(&self.components.timestamp()) {
             Ordering::Less => {
                 panic!("Clock has moved backwards! This is not supported.");
-            },
+            }
             Ordering::Greater => {
                 self.components.reset_sequence();
                 self.components.set_timestamp(now);
                 T::from_parts(now, instance, 0)
-            },
+            }
             Ordering::Equal => {
                 let sequence = self.components.take_sequence();
                 if sequence == 0 {
@@ -504,7 +504,12 @@ mod tests {
         for _ in 0..10_000 {
             let id: u64 = generator.generate();
             assert_eq!(id.instance(), INSTANCE);
-            assert!(last_id < Some(id), "expected {:?} to be less than {:?}", last_id, Some(id));
+            assert!(
+                last_id < Some(id),
+                "expected {:?} to be less than {:?}",
+                last_id,
+                Some(id)
+            );
             last_id = Some(id);
         }
     }

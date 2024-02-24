@@ -245,13 +245,13 @@ where
                 match now.cmp(&components.timestamp()) {
                     cmp::Ordering::Less => {
                         panic!("Clock has moved backwards! This is not supported");
-                    },
+                    }
                     cmp::Ordering::Greater => {
                         components.reset_sequence();
                         components.set_timestamp(now);
                         id = Some(S::from_parts(now, instance, 0));
                         Some(components.to_bits())
-                    },
+                    }
                     cmp::Ordering::Equal => {
                         let sequence = components.take_sequence();
                         if sequence == 0 {
@@ -266,7 +266,7 @@ where
         id.expect("ID should have been set within the fetch_update closure.")
     }
 
-    fn wait_until_next_millisecond<F>(epoch: &T, last_millisecond: u64, tick_wait: F) -> u64 
+    fn wait_until_next_millisecond<F>(epoch: &T, last_millisecond: u64, tick_wait: F) -> u64
     where
         F: Fn(),
     {
@@ -298,7 +298,12 @@ mod tests {
         for _ in 0..10_000 {
             let id: u64 = generator.generate();
             assert_eq!(id.instance(), INSTANCE);
-            assert!(last_id < Some(id), "expected {:?} to be less than {:?}", last_id, Some(id));
+            assert!(
+                last_id < Some(id),
+                "expected {:?} to be less than {:?}",
+                last_id,
+                Some(id)
+            );
             last_id = Some(id);
         }
     }
@@ -423,17 +428,18 @@ mod loom_tests {
             let generator = Arc::new(InternalGenerator::<TestTime>::new_unchecked(0));
             let (tx, rx) = mpsc::channel();
 
-            let threads: Vec<_> = (0..THREADS)
-                .map(|_| {
-                    let generator = generator.clone();
-                    let tx = tx.clone();
+            let threads: Vec<_> =
+                (0..THREADS)
+                    .map(|_| {
+                        let generator = generator.clone();
+                        let tx = tx.clone();
 
-                    thread::spawn(move || {
-                        let id: u64 = generator.generate(panic_on_wait);
-                        tx.send(id).unwrap();
+                        thread::spawn(move || {
+                            let id: u64 = generator.generate(panic_on_wait);
+                            tx.send(id).unwrap();
+                        })
                     })
-                })
-                .collect();
+                    .collect();
 
             for th in threads {
                 th.join().unwrap();
