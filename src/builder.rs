@@ -114,6 +114,25 @@ impl Builder {
         self
     }
 
+    /// Sets the `epoch` value of the `Builder`.
+    ///
+    /// The `epoch` is the instant at which the `timestamp` of the Snowflake is zero. In other
+    /// words `epoch` is the earliest time a Snowflake can be constructed.
+    ///
+    /// The default value is [`UNIX_EPOCH`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::time::{Duration, SystemTime};
+    /// # use snowflaked::{Builder, Generator, Snowflake};
+    /// #
+    /// let now = SystemTime::now();
+    /// let mut generator: Generator = Builder::new().epoch(now).build();
+    ///
+    /// let id: u64 = generator.generate();
+    /// assert!(now + Duration::from_millis(id.timestamp()) >= now);
+    /// ```
     #[inline]
     pub const fn epoch(mut self, epoch: SystemTime) -> Self {
         self.epoch = epoch;
