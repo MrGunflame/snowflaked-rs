@@ -173,3 +173,9 @@ impl Builder {
         T::from(self)
     }
 }
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

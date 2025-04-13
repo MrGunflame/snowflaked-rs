@@ -15,6 +15,9 @@ sync = []
 [target.'cfg(loom)'.dependencies]
 loom = "0.5"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
