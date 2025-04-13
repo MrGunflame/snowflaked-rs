@@ -24,12 +24,6 @@ use crate::{const_panic_new, Components, Snowflake, INSTANCE_MAX};
 /// A generator for unique snowflake ids. Since [`generate`] accepts a `&self` reference this can
 /// be used in a `static` context.
 ///
-/// # Cloning
-///
-/// Cloning a `Generator` will create a second one with the same state as the original one. The
-/// internal state is copied and not shared. If you need to share a single `Generator` you need to
-/// manually wrap it in an [`Arc`] (or similar).
-///
 /// # Example
 /// ```
 /// use snowflaked::sync::Generator;
