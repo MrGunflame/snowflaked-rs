@@ -17,9 +17,9 @@
 //! ```
 //!
 //! - The [`Snowflake`] implementation for `u64` uses 42 bits for the timestamp, 10 bits for the
-//! instance and 12 bits for the sequence.
+//!   instance and 12 bits for the sequence.
 //! - The [`Snowflake`] implementation for `i64` uses 41 bits for the timestamp, 10 bits for the
-//! instance and 12 bits for the sequence.
+//!   instance and 12 bits for the sequence.
 //!
 //! ## Timestamp overflow
 //!
